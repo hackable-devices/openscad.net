@@ -423,19 +423,15 @@ CSG.prototype = {
   // 
   intersect: function(csg) {
     var csgs;
-    if(csg instanceof Array)
-    {
+    if(csg instanceof Array) {
       csgs = csg;
-    }
-    else
-    {
+    } else {
       csgs = [csg];
     }
     var result = this;
-    for(var i = 0; i < csgs.length; i++)
-    {
+    for(var i = 0; i < csgs.length; i++) {
       console.log('intersect');
-      var islast = (i == (csgs.length-1));
+      var islast = (i == (csgs.length - 1));
       result = result.intersectSub(csgs[i], islast, islast);
     }
     return result;
@@ -453,12 +449,13 @@ CSG.prototype = {
     a.invert();
     var result = CSG.fromPolygons(a.allPolygons());
     result.properties = this.properties._merge(csg.properties);
-    if(retesselate) result = result.reTesselated();              
+    if(retesselate) result = result.reTesselated();
     if(canonicalize) result = result.canonicalized();
     return result;
   },
 
   hull: function(csg) {
+    //Temporary use the THREE.ConvexGeometry to calculate the convex hull of the object
     //Get array of csg objects
     var csgs;
     if (csg instanceof Array) {
@@ -473,24 +470,12 @@ CSG.prototype = {
 
     var pts = [];
 
-    //function randomPointInSphere( radius ) {
-    //  return new THREE.Vector3( 
-    //          ( Math.random() - 0.5 ) * 2 * radius,
-    //          ( Math.random() - 0.5 ) * 2 * radius,
-    //          ( Math.random() - 0.5 ) * 2 * radius
-    //  );
-    //}
-
     function thvtc(v) {
       return new CSG.Vertex( new CSG.Vector3D(v.x, v.y, v.z) );
     }
     function cvtth(v) {
       return new THREE.Vector3(v.x, v.y, v.z);
     }
-
-    //for ( var i = 0; i < 157; i++ ) {
-      //pts.push( randomPointInSphere( 50 ) );
-    //}
 
     for ( var i=0; i < csgs.length; i++ ) {
       for ( var j=0; j < csgs[i].polygons.length; j++ ) {
@@ -511,8 +496,6 @@ CSG.prototype = {
       }
     }
 
-    //return 0;
-
     var material = new THREE.MeshPhongMaterial({
         ambient: 0xff5533, color: 0xff5533, specular: 0x111111, shininess: 200, fog: false,
         wireframe: false
@@ -521,8 +504,6 @@ CSG.prototype = {
     var currentMesh = new THREE.Mesh( new THREE.ConvexGeometry( pts ), material );
     var geometry = currentMesh.geometry;
     var polygons = [];
-
-    //console.log(geometry);
 
     for ( var i=0; i < geometry.faces.length; i++) {
       var vertices = [];
@@ -536,10 +517,6 @@ CSG.prototype = {
     }
 
     var returnValue = CSG.fromPolygons(polygons);
-    returnValue = returnValue.canonicalized();
-    returnValue = returnValue.reTesselated();
-
-    //console.log(returnValue);
 
     return returnValue;
 
@@ -1135,11 +1112,12 @@ CSG.prototype = {
   }, 
 
   setColor: function(red,green,blue,alpha) {
-    var newshared = new CSG.Polygon.Shared([red, green, blue, alpha||1]);
+    /*var newshared = new CSG.Polygon.Shared([red, green, blue, alpha||1]);
     for ( var i=0; i < this.polygons.length; i++ ) {
       this.polygons[i].shared.color = newshared;
     }
-    return this.setShared(newshared);
+    return this.setShared(newshared);*/
+    return this;
   },
 
   toCompactBinary: function() {
@@ -3611,7 +3589,7 @@ CSG.Tree.prototype = {
   // Remove all polygons in this BSP tree that are inside the other BSP tree
   // `tree`.
   clipTo: function(tree, alsoRemovecoplanarFront) {
-    alsoRemovecoplanarFront = alsoRemovecoplanarFront? true:false;
+    alsoRemovecoplanarFront = alsoRemovecoplanarFront ? true : false;
     this.rootnode.clipTo(tree, alsoRemovecoplanarFront);
   },
 
@@ -3832,6 +3810,35 @@ CSG.Node.prototype = {
     }
 
     if (!_CSGITERATIVE) {
+      //RECURSIVE METHOD
+
+      //-----------------------------------
+      //DETECT IF THERE IS A TRANSFORM ERROR
+      var continueStack = true;
+      for (var k=0; k < polygontreenodes.length; k++ ) {
+        var vertices = polygontreenodes[k].polygon.vertices;
+        for ( var i=0; i < vertices.length; i++ ) {
+          for (var j=0; j < vertices.length; j++ ) {
+            if (i != j) {
+              if (vertices[i].pos.equals(vertices[j].pos)) {
+                continueStack = false;
+                break;
+              }
+            }
+          }
+          if (!continueStack) {
+            break;
+          }
+        }
+        if (!continueStack) {
+          break;
+        }
+      }
+
+      if (!continueStack) {
+        return;
+      }
+      //-----------------------------------
 
       var _this = this;
       if (!this.plane) {
@@ -3844,7 +3851,6 @@ CSG.Node.prototype = {
         polygontreenode.splitByPlane(_this.plane, _this.polygontreenodes, backnodes, frontnodes, backnodes);
       });
 
-      //RECURSIVE METHOD, REPLACED BY AN ITERATIVE METHOD
       if(frontnodes.length > 0) {
         if (!this.front) {
           this.front = new CSG.Node(this);
@@ -3870,11 +3876,15 @@ CSG.Node.prototype = {
         var currNode = stack.current();
 
         //console.log(stack.size());
-        console.log('stack');
+        //console.log('stack');
         cpt++;
 
         if (cpt == 50000) {
           break;
+        }
+
+        if (cpt == 20000) {
+          console.log('stack');
         }
 
         //Calculate frontnodes && backnodes
@@ -3896,23 +3906,44 @@ CSG.Node.prototype = {
         });
 
         stack.pop();
+
+        //-----------------------------------
+        //DETECT IF THERE IS A TRANSFORM ERROR
+        var continueStack = true;
+        for (var k=0; k < currNode.data2.length; k++ ) {
+          var vertices = currNode.data2[k].polygon.vertices;
+          for ( var i=0; i < vertices.length; i++ ) {
+            for (var j=0; j < vertices.length; j++ ) {
+              if (i != j) {
+                if (vertices[i].pos.equals(vertices[j].pos)) {
+                  continueStack = false;
+                  break;
+                }
+              }
+            }
+            if (!continueStack) {
+              break;
+            }
+          }
+          if (!continueStack) {
+            break;
+          }
+        }
+
+        if (!continueStack) {
+          //continue;
+        }
+        //-----------------------------------
+
         if (_backnodes.length > 0) {
           if (!currNode.data1.back) {
             currNode.data1.back = new CSG.Node(currNode.node);
-          }
-          var newBackNodes = [];
-          for ( var i=0; i < _backnodes.length; i++ ) {
-            newBackNodes.push(_backnodes[i]);
           }
           stack.push(currNode.data1.back, _backnodes);
         }
         if (_frontnodes.length > 0) {
           if (!currNode.data1.front) {
             currNode.data1.front = new CSG.Node(currNode.node);
-          }
-          var newFrontNodes = [];
-          for ( var i=0; i < _frontnodes.length; i++ ) {
-            newFrontNodes.push(_frontnodes[i]);
           }
           stack.push(currNode.data1.front, _frontnodes);
         }
